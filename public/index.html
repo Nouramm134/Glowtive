@@ -969,15 +969,22 @@ function App() {
     details: <Details go={setScreen} product={activeProduct} allergyList={allergyList} />,
     profile: <Profile go={setScreen} user={user} onSignOut={handleSignOut} />,
   };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#EDEAF6", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT }}>
-      <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      <div style={{ width: 360, height: 740, background: "#fff", borderRadius: 36, border: "10px solid #16131f", overflow: "hidden", position: "relative", boxShadow: "0 30px 60px rgba(0,0,0,0.3)" }}>
-        {screens[screen]}
-      </div>
-    </div>
-  );
+return (
+  <div style={{
+    width: "100vw",
+    height: "100vh",
+    background: "#fff",
+    fontFamily: FONT,
+    overflow: "hidden",
+    position: "relative"
+  }}>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    {screens[screen]}
+  </div>
+);
 }
 
 
