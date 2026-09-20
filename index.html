@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Glowtive</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+</head>
+<body style="margin:0">
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+
+/* =========================================================================
+   Glowtive — exact rebuild of the team's SRS UI mockups (Figures 26-45)
+   Frontend: React (JavaScript, per the switch away from Java agreed with
+   the supervisor). AI logic below mirrors the AIEngine class from the
+   agreed class diagram: AnalyzeIngredients, MatchAllergens,
+   CheckProductSafety, GetSuitableAlternatives.
+   ========================================================================= */
+
+/* ---------------- Design tokens (from the report mockups) ---------------- */
+const T = {
+  lavender: "#C9BCEA",       // header background on auth / onboarding screens
+  lavenderDark: "#B7A6E3",
+  purple: "#7B3FF2",         // primary gradient start
+  violet: "#A85CF5",         // primary gradient end
+  ink: "#1E1B2E",
+  sub: "#8A85A0",
+  bg: "#FFFFFF",
+  card: "#F7F5FC",
+  line: "#ECE8F7",
+  green: "#E3F6E8",
+  greenText: "#1E7F43",
+  greenBorder: "#8FD9A8",
+  red: "#FBE9E7",
+  redText: "#C23B2E",
+  redBorder: "#E7A69C",
+  warnBg: "#FFF7E6",
+  warnBorder: "#F0C36D",
+  warnText: "#8A5A00",
+};
+
+const GRADIENT = `linear-gradient(135deg, ${T.purple}, ${T.violet})`;
+const FONT = "'Poppins', 'Segoe UI', sans-serif";
+
+/* ---------------- Product catalog (from products_to_classify.csv) --------
+   Ingredients / price / organic flag are generated deterministically per
+   product_id, since the CSV only carried id/name/brand/category. This is
+   a stand-in for the real ingredient-OCR pipeline. */
+const RAW_PRODUCTS = [{"id": "P469522", "name": "RESIST Youth-Extending Daily Hydrating Fluid SPF 50", "brand": "Paula's Choice", "categoryRaw": "Skincare", "organic": false, "ingredients": ["centella asiatica extract", "allantoin", "parabens", "alcohol denat", "retinol", "salicylic acid"], "price": 59}, {"id": "P379510", "name": "Advanced Génifique Radiance Boosting Face Serum", "brand": "Lancôme", "categoryRaw": "Skincare", "organic": false, "ingredients": ["fragrance", "glycerin", "phenoxyethanol", "parabens", "aqua", "tocopherol"], "price": 80}, {"id": "P469520", "name": "RESIST Perfectly Balanced Foaming Cleanser", "brand": "Paula's Choice", "categoryRaw": "Skincare", "organic": false, "ingredients": ["retinol", "salicylic acid", "panthenol", "tocopherol", "niacinamide"], "price": 55}, {"id": "P281835", "name": "GLO Brilliant White Smile - At Home Teeth Whitening Device", "brand": "GLO Science", "categoryRaw": "Skincare", "organic": false, "ingredients": ["parabens", "salicylic acid", "panthenol", "glycerin"], "price": 87}, {"id": "P427413", "name": "Lactic Acid 10% + HA 2% Exfoliating Serum", "brand": "The Ordinary", "categoryRaw": "Skincare", "organic": false, "ingredients": ["parabens", "panthenol", "retinol", "salicylic acid"], "price": 102}, {"id": "P504064", "name": "Ceramidin Cream-Infused Mask", "brand": "Dr. Jart+", "categoryRaw": "Skincare", "organic": false, "ingredients": ["allantoin", "fragrance", "tocopherol", "alcohol denat", "panthenol"], "price": 118}, {"id": "P476485", "name": "Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide Refill", "brand": "Fenty Skin", "categoryRaw": "Skincare", "organic": true, "ingredients": ["aqua", "alcohol denat", "centella asiatica extract", "glycerin"], "price": 105}, {"id": "P448530", "name": "Salicylic Acid 2% Masque", "brand": "The Ordinary", "categoryRaw": "Skincare", "organic": true, "ingredients": ["alcohol denat", "hyaluronic acid", "salicylic acid", "parabens", "allantoin", "glycerin"], "price": 53}, {"id": "P482325", "name": "Every. Single. Face. Watery Lotion SPF 50", "brand": "Supergoop!", "categoryRaw": "Skincare", "organic": false, "ingredients": ["phenoxyethanol", "hyaluronic acid", "aqua", "alcohol denat"], "price": 81}, {"id": "P415747", "name": "Brazilian Kiss Cupuaçu Lip Butter", "brand": "Sol de Janeiro", "categoryRaw": "Skincare", "organic": false, "ingredients": ["niacinamide", "alcohol denat", "centella asiatica extract", "ceramide np", "glycerin", "phenoxyethanol"], "price": 47}, {"id": "P423123", "name": "Daily Superfoliant Exfoliator", "brand": "Dermalogica", "categoryRaw": "Skincare", "organic": true, "ingredients": ["glycerin", "allantoin", "alcohol denat", "ceramide np", "salicylic acid"], "price": 61}, {"id": "P474080", "name": "Water Drench Hyaluronic Cloud Mask Hydrating Gel", "brand": "Peter Thomas Roth", "categoryRaw": "Skincare", "organic": false, "ingredients": ["glycerin", "hyaluronic acid", "phenoxyethanol", "parabens", "panthenol"], "price": 61}, {"id": "P421432", "name": "Rapid Relief Acne Spot Treatment", "brand": "Murad", "categoryRaw": "Skincare", "organic": true, "ingredients": ["parabens", "tocopherol", "aqua", "glycerin"], "price": 117}, {"id": "P476843", "name": "Cryo-Recovery Depuffing Eye Serum", "brand": "Charlotte Tilbury", "categoryRaw": "Skincare", "organic": true, "ingredients": ["glycerin", "fragrance", "tocopherol", "centella asiatica extract", "parabens"], "price": 61}, {"id": "P500240", "name": "Daily Milkfoliant Exfoliator", "brand": "Dermalogica", "categoryRaw": "Skincare", "organic": false, "ingredients": ["retinol", "panthenol", "parabens", "centella asiatica extract", "tocopherol"], "price": 40}, {"id": "P503572", "name": "Let's Get Luminous Brightening Essentials Set", "brand": "OLEHENRIKSEN", "categoryRaw": "Skincare", "organic": true, "ingredients": ["parabens", "ceramide np", "hyaluronic acid", "salicylic acid"], "price": 57}, {"id": "P502691", "name": "SuperSolutions 1% Retinol Serum", "brand": "The INKEY List", "categoryRaw": "Skincare", "organic": false, "ingredients": ["tocopherol", "niacinamide", "fragrance", "allantoin", "centella asiatica extract"], "price": 37}, {"id": "P471043", "name": "Argan Pro-Retinol Eye Cream", "brand": "Josie Maran", "categoryRaw": "Skincare", "organic": true, "ingredients": ["retinol", "panthenol", "parabens", "centella asiatica extract", "fragrance"], "price": 40}, {"id": "P433619", "name": "Extra Rich Cleansing Milk", "brand": "Shiseido", "categoryRaw": "Skincare", "organic": false, "ingredients": ["niacinamide", "fragrance", "alcohol denat", "centella asiatica extract", "phenoxyethanol", "retinol"], "price": 92}, {"id": "P473126", "name": "CLINICAL Discoloration Repair Serum", "brand": "Paula's Choice", "categoryRaw": "Skincare", "organic": true, "ingredients": ["salicylic acid", "phenoxyethanol", "ceramide np", "panthenol"], "price": 99}, {"id": "P466153", "name": "Cloud Dew Gel Cream Moisturizer", "brand": "Summer Fridays", "categoryRaw": "Skincare", "organic": false, "ingredients": ["alcohol denat", "allantoin", "aqua", "panthenol", "glycerin", "niacinamide"], "price": 53}, {"id": "P419223", "name": "Shaba Complex Firming Eye Serum", "brand": "Drunk Elephant", "categoryRaw": "Skincare", "organic": false, "ingredients": ["phenoxyethanol", "alcohol denat", "centella asiatica extract", "glycerin"], "price": 51}, {"id": "P436347", "name": "Glow Addict Activated Mask", "brand": "FOREO", "categoryRaw": "Skincare", "organic": false, "ingredients": ["allantoin", "parabens", "centella asiatica extract", "ceramide np", "salicylic acid"], "price": 43}, {"id": "P440317", "name": "Potent-C Vitamin C Bright & Plump Moisturizer", "brand": "Peter Thomas Roth", "categoryRaw": "Skincare", "organic": false, "ingredients": ["allantoin", "parabens", "aqua", "salicylic acid", "tocopherol"], "price": 43}, {"id": "P504447", "name": "Gradual Tanning Drops Face & Body", "brand": "SEPHORA COLLECTION", "categoryRaw": "Skincare", "organic": false, "ingredients": ["centella asiatica extract", "retinol", "allantoin", "salicylic acid", "panthenol", "alcohol denat"], "price": 74}, {"id": "P503998", "name": "Algae Peptide Regenerative Moisturizer", "brand": "Algenist", "categoryRaw": "Skincare", "organic": true, "ingredients": ["ceramide np", "retinol", "fragrance", "panthenol", "tocopherol", "salicylic acid"], "price": 41}, {"id": "P501185", "name": "Luxury Lip Shine – Longwear Hydration Lip Oil with Vitamin C", "brand": "Saint Jane Beauty", "categoryRaw": "Skincare", "organic": true, "ingredients": ["niacinamide", "salicylic acid", "panthenol", "aqua", "retinol", "fragrance"], "price": 92}, {"id": "P504850", "name": "Premier Cru Fine Lines and Wrinkles Anti-Aging Set", "brand": "Caudalie", "categoryRaw": "Skincare", "organic": false, "ingredients": ["aqua", "salicylic acid", "niacinamide", "hyaluronic acid"], "price": 30}, {"id": "P474109", "name": "Daily Reveal  Exfoliating Face Pads with AHA + BHA + PHA + TXA", "brand": "StriVectin", "categoryRaw": "Skincare", "organic": false, "ingredients": ["phenoxyethanol", "retinol", "panthenol", "tocopherol"], "price": 81}, {"id": "P500288", "name": "1% Vitamin A Retinol Serum", "brand": "Farmacy", "categoryRaw": "Skincare", "organic": true, "ingredients": ["glycerin", "aqua", "phenoxyethanol", "parabens", "retinol"], "price": 31}, {"id": "P504322", "name": "Gentle Hydra-Gel Face Cleanser", "brand": "NUDESTIX", "categoryRaw": "Skincare", "organic": false, "ingredients": ["hyaluronic acid", "centella asiatica extract", "aqua", "retinol"], "price": 48}, {"id": "P482328", "name": "Mini Natural Moisturizing Factors + HA", "brand": "The Ordinary", "categoryRaw": "Skincare", "organic": false, "ingredients": ["tocopherol", "panthenol", "retinol", "hyaluronic acid", "alcohol denat"], "price": 67}, {"id": "P461161", "name": "FAB Pharma BHA Acne Spot Treatment Gel 2% Salicylic Acid", "brand": "First Aid Beauty", "categoryRaw": "Skincare", "organic": true, "ingredients": ["niacinamide", "parabens", "aqua", "tocopherol", "panthenol", "allantoin"], "price": 62}, {"id": "P432662", "name": "Rose Quartz Facial Roller", "brand": "Herbivore", "categoryRaw": "Skincare", "organic": false, "ingredients": ["parabens", "alcohol denat", "ceramide np", "phenoxyethanol"], "price": 42}, {"id": "P455241", "name": "Noni Night AHA Pore & Resurfacing Serum", "brand": "KORA Organics", "categoryRaw": "Skincare", "organic": false, "ingredients": ["allantoin", "panthenol", "alcohol denat", "glycerin", "retinol"], "price": 73}, {"id": "P504840", "name": "Hydrate + Purify Mini Bestsellers Discovery Skincare Set", "brand": "innisfree", "categoryRaw": "Skincare", "organic": false, "ingredients": ["phenoxyethanol", "ceramide np", "panthenol", "hyaluronic acid"], "price": 36}, {"id": "P451750", "name": "Oligo Peptide Eye Cream", "brand": "SOBEL SKIN Rx", "categoryRaw": "Skincare", "organic": false, "ingredients": ["aqua", "centella asiatica extract", "alcohol denat", "parabens"], "price": 105}, {"id": "P481168", "name": "Mini The Dewy Skin Cream Plumping & Hydrating Moisturizer", "brand": "Tatcha", "categoryRaw": "Skincare", "organic": false, "ingredients": ["centella asiatica extract", "tocopherol", "retinol", "parabens", "glycerin", "ceramide np"], "price": 119}, {"id": "P448537", "name": "Alpha Arbutin Brightening Serum", "brand": "The INKEY List", "categoryRaw": "Skincare", "organic": false, "ingredients": ["parabens", "salicylic acid", "glycerin", "phenoxyethanol"], "price": 117}, {"id": "P505049", "name": "barrier+ Triple Lipid + Collagen Brightening Eye Treatment", "brand": "Skinfix", "categoryRaw": "Skincare", "organic": false, "ingredients": ["alcohol denat", "allantoin", "phenoxyethanol", "panthenol", "aqua", "centella asiatica extract"], "price": 98}, {"id": "P469862", "name": "Rich Bitch Cactus + Vitamin C Moisturizer", "brand": "Freck Beauty", "categoryRaw": "Skincare", "organic": true, "ingredients": ["parabens", "panthenol", "alcohol denat", "phenoxyethanol"], "price": 102}, {"id": "P504056", "name": "Perfect Canvas Smooth, Prep & Plump Essence", "brand": "REN Clean Skincare", "categoryRaw": "Skincare", "organic": false, "ingredients": ["alcohol denat", "ceramide np", "tocopherol", "parabens", "phenoxyethanol", "glycerin"], "price": 68}, {"id": "P456434", "name": "knockout brightening gel moisturizer", "brand": "tarte", "categoryRaw": "Skincare", "organic": true, "ingredients": ["glycerin", "niacinamide", "hyaluronic acid", "allantoin", "centella asiatica extract"], "price": 76}, {"id": "P444967", "name": "Mini Facial Spray with Aloe, Herbs and Rosewater", "brand": "Mario Badescu", "categoryRaw": "Skincare", "organic": false, "ingredients": ["niacinamide", "tocopherol", "panthenol", "retinol", "aqua", "ceramide np"], "price": 32}, {"id": "P482739", "name": "Urban Environment Oil-Free Sunscreen Broad-Spectrum SPF 42", "brand": "Shiseido", "categoryRaw": "Skincare", "organic": false, "ingredients": ["fragrance", "phenoxyethanol", "parabens", "salicylic acid", "centella asiatica extract", "alcohol denat"], "price": 50}, {"id": "P481085", "name": "Faceshot Vitamin Ampoules Refill", "brand": "FaceGym", "categoryRaw": "Skincare", "organic": false, "ingredients": ["fragrance", "aqua", "retinol", "parabens", "allantoin", "alcohol denat"], "price": 95}, {"id": "P443383", "name": "Moisture Surge Eye 96-Hour Hydro-Filler Concentrate", "brand": "CLINIQUE", "categoryRaw": "Skincare", "organic": false, "ingredients": ["panthenol", "phenoxyethanol", "fragrance", "alcohol denat", "glycerin"], "price": 49}, {"id": "P469510", "name": "CLINICAL 1% Retinol Treatment", "brand": "Paula's Choice", "categoryRaw": "Skincare", "organic": false, "ingredients": ["alcohol denat", "centella asiatica extract", "niacinamide", "fragrance", "aqua", "retinol"], "price": 53}, {"id": "P392144", "name": "Purifying Pore Detox Cleanser", "brand": "Tata Harper", "categoryRaw": "Skincare", "organic": false, "ingredients": ["centella asiatica extract", "panthenol", "phenoxyethanol", "glycerin", "fragrance", "ceramide np"], "price": 89}, {"id": "P122881", "name": "Clarifying Lotion 3", "brand": "CLINIQUE", "categoryRaw": "Skincare", "organic": true, "ingredients": ["phenoxyethanol", "fragrance", "tocopherol", "hyaluronic acid"], "price": 51}, {"id": "P500877", "name": "Pequi Curl Activator Styling Serum", "brand": "Ceremonia", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "keratin", "argan oil", "biotin", "dimethicone", "fragrance"], "price": 77}, {"id": "P434456", "name": "L'incroyable Blow-Dry Reshapable Hair Lotion", "brand": "Kérastase", "categoryRaw": "Hair", "organic": false, "ingredients": ["glycerin", "aqua", "fragrance", "cetearyl alcohol"], "price": 39}, {"id": "P469441", "name": "Scalp Revival Soothe + Detoxify Travel Set for Dry Itchy, Oily Scalp", "brand": "Briogeo", "categoryRaw": "Hair", "organic": true, "ingredients": ["argan oil", "citric acid", "dimethicone", "sodium laureth sulfate"], "price": 66}, {"id": "P467773", "name": "Curl Enhancer Conditioning Cream", "brand": "Living Proof", "categoryRaw": "Hair", "organic": true, "ingredients": ["parabens", "dimethicone", "cetearyl alcohol", "aqua", "argan oil", "fragrance"], "price": 74}, {"id": "P468150", "name": "Good Behavior Spirulina Protein Anti-Frizz Smoothing  Balm", "brand": "IGK", "categoryRaw": "Hair", "organic": false, "ingredients": ["cetearyl alcohol", "aqua", "glycerin", "sodium laureth sulfate", "parabens"], "price": 61}, {"id": "P479848", "name": "Chroma Absolu High Shine Gloss Treatment for Color-Treated Hair", "brand": "Kérastase", "categoryRaw": "Hair", "organic": false, "ingredients": ["cetearyl alcohol", "panthenol", "aqua", "sodium laureth sulfate", "argan oil"], "price": 115}, {"id": "P501786", "name": "Agua Fresca Hydrating Conditioner", "brand": "Drybar", "categoryRaw": "Hair", "organic": false, "ingredients": ["argan oil", "biotin", "fragrance", "parabens"], "price": 36}, {"id": "P504787", "name": "Violet Hour Purple Shampoo", "brand": "dae", "categoryRaw": "Hair", "organic": true, "ingredients": ["citric acid", "keratin", "aqua", "fragrance", "glycerin", "cetearyl alcohol"], "price": 47}, {"id": "P480591", "name": "The Renewal Hydrating Hair Mask", "brand": "Crown Affair", "categoryRaw": "Hair", "organic": true, "ingredients": ["keratin", "panthenol", "glycerin", "dimethicone", "cetearyl alcohol"], "price": 67}, {"id": "P435931", "name": "CAVIAR Anti-Aging Restructuring Bond Repair Leave-In Protein Cream", "brand": "ALTERNA Haircare", "categoryRaw": "Hair", "organic": true, "ingredients": ["dimethicone", "parabens", "keratin", "biotin", "citric acid"], "price": 88}, {"id": "P465753", "name": "Detox Dry Shampoo", "brand": "Drybar", "categoryRaw": "Hair", "organic": false, "ingredients": ["fragrance", "glycerin", "keratin", "biotin", "panthenol", "cetearyl alcohol"], "price": 98}, {"id": "P462361", "name": "Propolis Infused Heat Protecting Spray", "brand": "Gisou", "categoryRaw": "Hair", "organic": true, "ingredients": ["aqua", "biotin", "parabens", "argan oil"], "price": 114}, {"id": "P462832", "name": "Curl Defining Cream", "brand": "Bumble and bumble", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "dimethicone", "glycerin", "sodium laureth sulfate", "citric acid", "parabens"], "price": 41}, {"id": "P469126", "name": "Mini Superfine Hair Spray", "brand": "Oribe", "categoryRaw": "Hair", "organic": true, "ingredients": ["glycerin", "fragrance", "aqua", "dimethicone"], "price": 57}, {"id": "P479723", "name": "Mini Detox Shampoo", "brand": "OUAI", "categoryRaw": "Hair", "organic": false, "ingredients": ["aqua", "glycerin", "fragrance", "argan oil"], "price": 78}, {"id": "P502014", "name": "Wash & Scrub Clarifying Detox Shampoo", "brand": "Curlsmith", "categoryRaw": "Hair", "organic": false, "ingredients": ["keratin", "citric acid", "argan oil", "sodium laureth sulfate", "fragrance"], "price": 31}, {"id": "P475974", "name": "Jojoba Hair & Scalp Oil Blend", "brand": "PATTERN by Tracee Ellis Ross", "categoryRaw": "Hair", "organic": false, "ingredients": ["cetearyl alcohol", "aqua", "citric acid", "dimethicone", "sodium laureth sulfate"], "price": 61}, {"id": "P471581", "name": "Moondust Conditioner Fragrance Free", "brand": "Susteau", "categoryRaw": "Hair", "organic": false, "ingredients": ["aqua", "panthenol", "biotin", "dimethicone"], "price": 66}, {"id": "P78301", "name": "Body-Building Hair Gel", "brand": "Jack Black", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "keratin", "fragrance", "sodium laureth sulfate", "glycerin", "dimethicone"], "price": 53}, {"id": "P502001", "name": "Full Body Thickening Hair Lotion", "brand": "Curlsmith", "categoryRaw": "Hair", "organic": false, "ingredients": ["sodium laureth sulfate", "glycerin", "panthenol", "dimethicone"], "price": 105}, {"id": "P378842", "name": "Surf Foam Wash Shampoo", "brand": "Bumble and bumble", "categoryRaw": "Hair", "organic": false, "ingredients": ["parabens", "aqua", "argan oil", "biotin", "fragrance", "sodium laureth sulfate"], "price": 80}, {"id": "P501693", "name": "The Wizard Detangling Hair Primer", "brand": "amika", "categoryRaw": "Hair", "organic": false, "ingredients": ["parabens", "glycerin", "aqua", "keratin", "citric acid", "cetearyl alcohol"], "price": 32}, {"id": "P280572", "name": "Creme de Coco Conditioner", "brand": "Bumble and bumble", "categoryRaw": "Hair", "organic": false, "ingredients": ["dimethicone", "cetearyl alcohol", "parabens", "panthenol", "fragrance"], "price": 100}, {"id": "P461617", "name": "Mini Strength Cure Blonde Shampoo", "brand": "Pureology", "categoryRaw": "Hair", "organic": false, "ingredients": ["citric acid", "dimethicone", "aqua", "keratin", "cetearyl alcohol", "glycerin"], "price": 101}, {"id": "P412089", "name": "Extra Volume Shampoo", "brand": "Moroccanoil", "categoryRaw": "Hair", "organic": true, "ingredients": ["cetearyl alcohol", "fragrance", "aqua", "biotin", "dimethicone"], "price": 73}, {"id": "P449767", "name": "Energizing Scrub: Purifying Scrub for Oily Scalp", "brand": "Kérastase", "categoryRaw": "Hair", "organic": false, "ingredients": ["aqua", "fragrance", "glycerin", "panthenol"], "price": 108}, {"id": "P500338", "name": "GRO AGELESS Anti-Gray Hair Serum", "brand": "Vegamour", "categoryRaw": "Hair", "organic": false, "ingredients": ["glycerin", "sodium laureth sulfate", "keratin", "biotin"], "price": 87}, {"id": "P409417", "name": "Favoloso Hair Movement Spray", "brand": "Rossano Ferretti Parma", "categoryRaw": "Hair", "organic": false, "ingredients": ["cetearyl alcohol", "panthenol", "fragrance", "aqua", "keratin"], "price": 61}, {"id": "P476039", "name": "ColorKick Debrassing Blue - Purple Shampoo", "brand": "Virtue", "categoryRaw": "Hair", "organic": true, "ingredients": ["cetearyl alcohol", "panthenol", "argan oil", "glycerin", "biotin"], "price": 67}, {"id": "P473852", "name": "Sea Spray", "brand": "Verb", "categoryRaw": "Hair", "organic": false, "ingredients": ["citric acid", "keratin", "parabens", "panthenol", "aqua", "cetearyl alcohol"], "price": 89}, {"id": "P503824", "name": "Hydrate Shampoo & Conditioner Jumbo Value Set", "brand": "Pureology", "categoryRaw": "Hair", "organic": false, "ingredients": ["parabens", "citric acid", "cetearyl alcohol", "fragrance", "glycerin", "biotin"], "price": 116}, {"id": "P472333", "name": "ROOT REFRESH Micellar Rinse with Apple Cider Vinegar", "brand": "SUNDAY II SUNDAY", "categoryRaw": "Hair", "organic": true, "ingredients": ["fragrance", "glycerin", "panthenol", "dimethicone", "biotin", "aqua"], "price": 92}, {"id": "P500899", "name": "Hair Oil Mist con Aloe Vera", "brand": "Ceremonia", "categoryRaw": "Hair", "organic": false, "ingredients": ["parabens", "glycerin", "fragrance", "panthenol", "biotin", "argan oil"], "price": 62}, {"id": "P444428", "name": "Thirsty Girl Coconut Milk Anti-Frizz Shampoo", "brand": "IGK", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "keratin", "parabens", "aqua", "biotin", "dimethicone"], "price": 59}, {"id": "P448866", "name": "Jump Start Quick Dry Blowout Serum", "brand": "Drybar", "categoryRaw": "Hair", "organic": true, "ingredients": ["glycerin", "citric acid", "fragrance", "cetearyl alcohol"], "price": 111}, {"id": "P405297", "name": "CAVIAR Anti-Aging Multiplying Volume Styling Mist", "brand": "ALTERNA Haircare", "categoryRaw": "Hair", "organic": false, "ingredients": ["sodium laureth sulfate", "cetearyl alcohol", "keratin", "aqua"], "price": 111}, {"id": "P422037", "name": "Mini Perfect Hair Day Shampoo", "brand": "Living Proof", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "dimethicone", "sodium laureth sulfate", "fragrance", "citric acid", "cetearyl alcohol"], "price": 53}, {"id": "P431197", "name": "Normcore Hydrating Conditioner", "brand": "amika", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "biotin", "fragrance", "aqua", "cetearyl alcohol", "argan oil"], "price": 119}, {"id": "P469058", "name": "Cult Favorite Firm + Flexible Hairspray", "brand": "COLOR WOW", "categoryRaw": "Hair", "organic": false, "ingredients": ["biotin", "citric acid", "cetearyl alcohol", "argan oil", "sodium laureth sulfate"], "price": 94}, {"id": "P392308", "name": "Restore Repair Leave-In", "brand": "Living Proof", "categoryRaw": "Hair", "organic": false, "ingredients": ["parabens", "panthenol", "glycerin", "fragrance", "sodium laureth sulfate", "argan oil"], "price": 86}, {"id": "P447377", "name": "Color Depositing Mask", "brand": "Moroccanoil", "categoryRaw": "Hair", "organic": true, "ingredients": ["argan oil", "dimethicone", "keratin", "biotin"], "price": 30}, {"id": "P501970", "name": "Shape Up Aqua Hair Gel", "brand": "Curlsmith", "categoryRaw": "Hair", "organic": true, "ingredients": ["dimethicone", "parabens", "argan oil", "sodium laureth sulfate", "panthenol"], "price": 76}, {"id": "P504305", "name": "Moisture Repair Shampoo & Conditioner Half-Liter Duo", "brand": "Moroccanoil", "categoryRaw": "Hair", "organic": false, "ingredients": ["argan oil", "dimethicone", "keratin", "biotin"], "price": 48}, {"id": "P431722", "name": "Dry Shampoo for Dark Hair", "brand": "Verb", "categoryRaw": "Hair", "organic": true, "ingredients": ["glycerin", "panthenol", "sodium laureth sulfate", "biotin"], "price": 99}, {"id": "P484022", "name": "Renewing Exfoliating Scalp Scrub-to-Foam", "brand": "ALTERNA Haircare", "categoryRaw": "Hair", "organic": true, "ingredients": ["biotin", "parabens", "panthenol", "dimethicone", "aqua"], "price": 88}, {"id": "P456951", "name": "HoliRoots Hydrating Conditioner", "brand": "Fable & Mane", "categoryRaw": "Hair", "organic": false, "ingredients": ["aqua", "glycerin", "panthenol", "biotin"], "price": 72}, {"id": "P404916", "name": "Soulfood Nourishing Hair Mask", "brand": "amika", "categoryRaw": "Hair", "organic": true, "ingredients": ["keratin", "aqua", "biotin", "fragrance", "argan oil"], "price": 43}, {"id": "P461641", "name": "Hydrate Soft Softening Treatment Hair Mask", "brand": "Pureology", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "keratin", "fragrance", "argan oil", "glycerin", "biotin"], "price": 119}, {"id": "P454604", "name": "Sulfate-free Shampoo", "brand": "SEPHORA COLLECTION", "categoryRaw": "Hair", "organic": false, "ingredients": ["panthenol", "parabens", "citric acid", "glycerin", "biotin", "sodium laureth sulfate"], "price": 41}, {"id": "P469031", "name": "Airbrush Root Touch-Up Spray", "brand": "Oribe", "categoryRaw": "Hair", "organic": false, "ingredients": ["sodium laureth sulfate", "aqua", "dimethicone", "glycerin"], "price": 87}, {"id": "P457858", "name": "Coco Cabana Jet Set", "brand": "Sol de Janeiro", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["citric acid", "sodium chloride", "coco-glucoside", "cocamidopropyl betaine", "alcohol denat"], "price": 73}, {"id": "P20375", "name": "COCO MADEMOISELLE Foaming Shower Gel", "brand": "CHANEL", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["parabens", "aqua", "fragrance", "sodium chloride"], "price": 81}, {"id": "P479736", "name": "Wake the F*ck Up Everyday Body Wash", "brand": "By Rosie Jane", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["coco-glucoside", "glycerin", "alcohol denat", "fragrance", "aqua", "shea butter"], "price": 50}, {"id": "P482317", "name": "Mini Beija Flor Elasti-Cream with Collagen and Squalane", "brand": "Sol de Janeiro", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["citric acid", "panthenol", "fragrance", "coco-glucoside"], "price": 60}, {"id": "P444194", "name": "J'adore Huile Divine - Dry Silky Body & Hair Oil", "brand": "Dior", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["panthenol", "alcohol denat", "citric acid", "cocamidopropyl betaine", "sodium chloride"], "price": 43}, {"id": "P502746", "name": "Hand Cream", "brand": "Moroccanoil", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["citric acid", "glycerin", "parabens", "coco-glucoside", "shea butter", "fragrance"], "price": 107}, {"id": "P476671", "name": "T.L.C Glycolic Body Lotion", "brand": "Drunk Elephant", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["citric acid", "coco-glucoside", "parabens", "panthenol"], "price": 84}, {"id": "P504902", "name": "Splash Salve In-Shower Body Moisture Treatment", "brand": "Hanni", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["citric acid", "panthenol", "glycerin", "shea butter", "sodium chloride"], "price": 85}, {"id": "P476427", "name": "Brazilian Touch Hand Cream", "brand": "Sol de Janeiro", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["parabens", "fragrance", "sodium chloride", "panthenol"], "price": 42}, {"id": "P451996", "name": "Mighty Night Overnight Renewal Supplement with Ceramides, CoQ10, & Ferulic Acid", "brand": "HUM Nutrition", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "citric acid", "shea butter", "glycerin"], "price": 78}, {"id": "P477823", "name": "Shower Gel Cleanser", "brand": "Moroccanoil", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["panthenol", "glycerin", "coco-glucoside", "alcohol denat", "citric acid", "cocamidopropyl betaine"], "price": 65}, {"id": "P407417", "name": "Masvelt Body Shaping Cream", "brand": "Clarins", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["fragrance", "panthenol", "glycerin", "cocamidopropyl betaine", "sodium chloride", "shea butter"], "price": 62}, {"id": "P417214", "name": "Orange Blossom Body Crème", "brand": "Jo Malone London", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["cocamidopropyl betaine", "shea butter", "aqua", "panthenol", "sodium chloride", "glycerin"], "price": 56}, {"id": "P380621", "name": "J'adore Body Milk", "brand": "Dior", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["panthenol", "fragrance", "citric acid", "cocamidopropyl betaine", "shea butter"], "price": 31}, {"id": "P468152", "name": "Mini Wood Sage & Sea Salt Body Crème", "brand": "Jo Malone London", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["cocamidopropyl betaine", "coco-glucoside", "aqua", "glycerin"], "price": 111}, {"id": "P461223", "name": "Major Glow Balm", "brand": "PATRICK TA", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["glycerin", "alcohol denat", "cocamidopropyl betaine", "parabens"], "price": 51}, {"id": "P476416", "name": "AFRICAN Beauty Butter- Intensive Dry Skin Treatment", "brand": "54 Thrones", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["parabens", "glycerin", "citric acid", "shea butter"], "price": 108}, {"id": "P435939", "name": "Night Body Serum", "brand": "Moroccanoil", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["alcohol denat", "glycerin", "parabens", "panthenol"], "price": 75}, {"id": "P457275", "name": "Coco Cabana Moisturizing Body Cream-Cleanser", "brand": "Sol de Janeiro", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["coco-glucoside", "glycerin", "cocamidopropyl betaine", "alcohol denat", "parabens"], "price": 94}, {"id": "P474829", "name": "Sculpting Body Lotion", "brand": "First Aid Beauty", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["aqua", "panthenol", "fragrance", "alcohol denat"], "price": 57}, {"id": "P438631", "name": "The Sculptor with LipoCare Cellulite Smoothing Body Cream", "brand": "BeautyBio", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["glycerin", "sodium chloride", "shea butter", "citric acid", "panthenol", "aqua"], "price": 47}, {"id": "P431735", "name": "Mini Ultimate Strength Hand Salve", "brand": "Kiehl's Since 1851", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["citric acid", "parabens", "shea butter", "coco-glucoside", "fragrance", "alcohol denat"], "price": 62}, {"id": "P466877", "name": "Alpha Beta Exfoliating Body Treatment Peel", "brand": "Dr. Dennis Gross Skincare", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["alcohol denat", "shea butter", "citric acid", "panthenol", "sodium chloride"], "price": 97}, {"id": "P429254", "name": "Mini Dry Body Oil", "brand": "Moroccanoil", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "coco-glucoside", "fragrance", "citric acid"], "price": 39}, {"id": "P460869", "name": "Grapefruit Hand Soap", "brand": "NEST New York", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "panthenol", "citric acid", "fragrance", "alcohol denat", "aqua"], "price": 80}, {"id": "P500444", "name": "Black Reserve Body & Hair Cleanser", "brand": "Jack Black", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["parabens", "glycerin", "fragrance", "sodium chloride", "cocamidopropyl betaine", "coco-glucoside"], "price": 86}, {"id": "P481120", "name": "Wipe - water-activated, biodegradable wipes", "brand": "maude", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["parabens", "citric acid", "cocamidopropyl betaine", "aqua", "fragrance"], "price": 73}, {"id": "P39950", "name": "Lavender Harvest Foaming Bath", "brand": "L'Occitane", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["aqua", "sodium chloride", "alcohol denat", "coco-glucoside", "parabens", "shea butter"], "price": 32}, {"id": "P39678", "name": "Shea Butter Rich Body Lotion", "brand": "L'Occitane", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["alcohol denat", "citric acid", "parabens", "shea butter"], "price": 93}, {"id": "P480530", "name": "Glow Mist Rejuvenating Hand Sanitizer", "brand": "Touchland", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["parabens", "citric acid", "panthenol", "cocamidopropyl betaine", "sodium chloride", "glycerin"], "price": 104}, {"id": "P459003", "name": "Mini Volcano Hand Lotion Cream", "brand": "Capri Blue", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["coco-glucoside", "sodium chloride", "citric acid", "glycerin", "alcohol denat", "shea butter"], "price": 89}, {"id": "P500398", "name": "Milk Body Lotion", "brand": "fresh", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["cocamidopropyl betaine", "aqua", "fragrance", "citric acid"], "price": 54}, {"id": "P456195", "name": "Body Fit Anti-Cellulite Contouring & Firming Expert", "brand": "Clarins", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "citric acid", "shea butter", "aqua", "glycerin"], "price": 37}, {"id": "P468852", "name": "Vanilla Woods Gemstone Perfume Oil", "brand": "The 7 Virtues", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["sodium chloride", "coco-glucoside", "glycerin", "aqua", "parabens"], "price": 73}, {"id": "P483684", "name": "Recover Bath Gem Body-Soothing Bath Soak with Arnica + Magnesium", "brand": "Prima", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["citric acid", "glycerin", "alcohol denat", "aqua", "fragrance"], "price": 103}, {"id": "P469211", "name": "Watermelon Glow AHA Pink Dream Body Cream", "brand": "Glow Recipe", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["coco-glucoside", "parabens", "citric acid", "sodium chloride", "alcohol denat"], "price": 82}, {"id": "P455584", "name": "Sauvage Shaving Gel", "brand": "Dior", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "fragrance", "glycerin", "alcohol denat", "cocamidopropyl betaine", "panthenol"], "price": 95}, {"id": "P501066", "name": "Calm the F*ck Down Deodorant", "brand": "By Rosie Jane", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["panthenol", "glycerin", "shea butter", "fragrance", "coco-glucoside", "sodium chloride"], "price": 89}, {"id": "P417210", "name": "Mimosa & Cardamom Body Crème", "brand": "Jo Malone London", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "alcohol denat", "cocamidopropyl betaine", "aqua", "glycerin", "coco-glucoside"], "price": 53}, {"id": "P481355", "name": "ExfoliKate  Resurfacing Body Scrub", "brand": "Kate Somerville", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["alcohol denat", "panthenol", "sodium chloride", "cocamidopropyl betaine", "citric acid"], "price": 118}, {"id": "P460570", "name": "The Hand Cream - With Peptide", "brand": "Nécessaire", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["fragrance", "sodium chloride", "citric acid", "cocamidopropyl betaine"], "price": 114}, {"id": "P471088", "name": "Bubble Bath & Shower Gel", "brand": "SEPHORA COLLECTION", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["cocamidopropyl betaine", "parabens", "alcohol denat", "sodium chloride", "shea butter"], "price": 97}, {"id": "P501577", "name": "Deepwater Hydrating & Soothing Body Crème with Sea Moss & Niacinamide", "brand": "CAY SKIN", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["coco-glucoside", "citric acid", "aqua", "sodium chloride"], "price": 75}, {"id": "P468690", "name": "Rose Body Soap", "brand": "Mario Badescu", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["parabens", "cocamidopropyl betaine", "fragrance", "citric acid", "coco-glucoside"], "price": 43}, {"id": "P500406", "name": "Milk Hydrating Hand Cream", "brand": "fresh", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["cocamidopropyl betaine", "coco-glucoside", "aqua", "citric acid", "shea butter", "fragrance"], "price": 71}, {"id": "P380627", "name": "Terre d'Hermès Deodorant Stick", "brand": "HERMÈS", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["shea butter", "fragrance", "sodium chloride", "alcohol denat"], "price": 57}, {"id": "P472162", "name": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Butters", "brand": "Fenty Skin", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["shea butter", "cocamidopropyl betaine", "citric acid", "coco-glucoside"], "price": 60}, {"id": "P380620", "name": "J'adore Soap", "brand": "Dior", "categoryRaw": "Bath & Body", "organic": true, "ingredients": ["aqua", "alcohol denat", "shea butter", "parabens"], "price": 51}, {"id": "P446344", "name": "Shimmer Body Oil", "brand": "Anastasia Beverly Hills", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["sodium chloride", "coco-glucoside", "glycerin", "aqua", "panthenol"], "price": 97}, {"id": "P122654", "name": "Deep Comfort Body Butter", "brand": "CLINIQUE", "categoryRaw": "Bath & Body", "organic": false, "ingredients": ["alcohol denat", "cocamidopropyl betaine", "fragrance", "sodium chloride", "panthenol"], "price": 115}];
+
+const ALLERGEN_OPTIONS = ["fragrance", "parabens", "alcohol denat", "salicylic acid", "sodium laureth sulfate", "dimethicone"];
+
+function toAppCategory(raw) {
+  if (raw === "Hair") return "hair";
+  if (raw === "Bath & Body") return "body";
+  return "skincare";
+}
+
+const PRODUCTS = RAW_PRODUCTS.map((p) => ({
+  ...p,
+  category: toAppCategory(p.categoryRaw),
+}));
+
+/* ---------------- Real backend connection ----------------
+   Point this at the running Express+SQLite server (see the
+   glowtive-backend folder / its README). When that server is
+   reachable, every call below hits real SQL. If it's not running
+   (e.g. previewing this artifact on its own), each call falls back
+   to the local in-memory logic further down so the demo still works. */
+const API_BASE = "";
+
+async function apiCall(path, options) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+  } catch (networkErr) {
+    // Backend unreachable (not running, wrong URL, CORS, offline, etc.)
+    const err = new Error("Can't reach the Glowtive server");
+    err.isNetworkError = true;
+    throw err;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || `Request failed (${res.status})`);
+    err.isServerError = true;
+    throw err;
+  }
+  return res.json();
+}
+
+/* ---------------- AIEngine (mirrors the class diagram) ---------------- */
+const AIEngine = {
+  analyzeIngredients(product) {
+    return product.ingredients;
+  },
+  matchAllergens(ingredients, allergyList) {
+    return ingredients.find((ing) => allergyList.includes(ing)) || null;
+  },
+  checkProductSafety(product, allergyList) {
+    const flagged = AIEngine.matchAllergens(
+      AIEngine.analyzeIngredients(product),
+      allergyList
+    );
+    return { safe: !flagged, flagged };
+  },
+  getSuitableAlternatives(product, allergyList, categoryFilter) {
+    return PRODUCTS.filter((p) => {
+      if (p.id === product.id) return false;
+      if (p.category !== product.category) return false;
+      if (categoryFilter && categoryFilter !== "all") {
+        if (categoryFilter === "organic" && !p.organic) return false;
+      }
+      return AIEngine.checkProductSafety(p, allergyList).safe;
+    });
+  },
+};
+
+/* ---------------- Shared atoms ---------------- */
+
+function Icon({ name, size = 20, color = T.ink, style }) {
+  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", style };
+  switch (name) {
+    case "home":
+      return (<svg {...common}><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>);
+    case "scan":
+      return (<svg {...common}><path d="M4 8V5a1 1 0 0 1 1-1h3" /><path d="M20 8V5a1 1 0 0 0-1-1h-3" /><path d="M4 16v3a1 1 0 0 0 1 1h3" /><path d="M20 16v3a1 1 0 0 1-1 1h-3" /></svg>);
+    case "profile":
+      return (<svg {...common}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2" /><path d="M14 10h5M14 14h5M6 16h6" /></svg>);
+    case "back":
+      return (<svg {...common} strokeWidth="2.2"><path d="M15 6l-6 6 6 6" /></svg>);
+    case "close":
+      return (<svg {...common}><path d="M6 6l12 12M18 6L6 18" /></svg>);
+    case "eye":
+      return (<svg {...common}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>);
+    case "camera":
+      return (<svg {...common}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7l1.6-2.4A1 1 0 0 1 10.4 4h3.2a1 1 0 0 1 .8.6L16 7" /><circle cx="12" cy="13.5" r="3.2" /></svg>);
+    case "gallery":
+      return (<svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="M21 16l-5.5-5.5a1 1 0 0 0-1.4 0L6 18.5" /></svg>);
+    case "warning":
+      return (<svg {...common} stroke={T.warnText}><path d="M12 3l10 18H2L12 3Z" /><path d="M12 10v4" /><path d="M12 17.2v.1" /></svg>);
+    case "filter":
+      return (<svg {...common}><path d="M4 6h16M7 12h10M10 18h4" /></svg>);
+    case "sortOrPlus":
+      return (<svg {...common} strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>);
+    case "check":
+      return (<svg {...common} stroke={T.greenText}><path d="M5 12l4 4 10-10" /></svg>);
+    case "signout":
+      return (<svg {...common}><path d="M9 6V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-1" /><path d="M3 12h11M11 8l4 4-4 4" /></svg>);
+    default:
+      return null;
+  }
+}
+
+function Screen({ children, bg = T.bg }) {
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: bg, fontFamily: FONT, color: T.ink, overflow: "hidden" }}>
+      {children}
+    </div>
+  );
+}
+
+function LavenderHeader({ title, onBack, height = 210 }) {
+  return (
+    <div style={{ background: T.lavender, height, flexShrink: 0, padding: "16px 20px", boxSizing: "border-box", position: "relative" }}>
+      {onBack && (
+        <button onClick={onBack} style={navBtnStyle}><Icon name="back" /></button>
+      )}
+      <div style={{ fontSize: 22, fontWeight: 700, marginTop: onBack ? 30 : 16, lineHeight: 1.3, maxWidth: 200 }}>
+        {title}
+      </div>
+    </div>
+  );
+}
+
+const navBtnStyle = { background: "none", border: "none", padding: 0, cursor: "pointer", position: "absolute", top: 16, left: 16 };
+
+function TopBar({ title, onBack, right }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", flexShrink: 0, background: T.bg }}>
+      <button onClick={onBack} style={{ visibility: onBack ? "visible" : "hidden", background: "none", border: "none", cursor: "pointer", width: 24 }}>
+        <Icon name="back" />
+      </button>
+      <span style={{ fontSize: 15, fontWeight: 600 }}>{title}</span>
+      <div style={{ width: 24, textAlign: "right", cursor: right ? "pointer" : "default", fontSize: 13, color: T.sub }} onClick={right && right.onClick}>
+        {right ? right.label : ""}
+      </div>
+    </div>
+  );
+}
+
+function GradientButton({ children, onClick, disabled, round, style }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: disabled ? "#D8D3E8" : GRADIENT,
+        color: "#fff",
+        border: "none",
+        borderRadius: round ? 999 : 14,
+        padding: round ? "16px" : "15px 18px",
+        fontSize: 14,
+        fontWeight: 600,
+        fontFamily: FONT,
+        cursor: disabled ? "default" : "pointer",
+        width: round ? 54 : "100%",
+        height: round ? 54 : "auto",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: disabled ? "none" : "0 10px 20px -8px rgba(123,63,242,0.55)",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, showEye, value, onChange, ...props }) {
+  const [hidden, setHidden] = useState(true);
+  const isPassword = props.type === "password";
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: 6 }}>{label}</div>
+      <div style={{ position: "relative" }}>
+        <input
+          {...props}
+          type={isPassword && !hidden ? "text" : props.type}
+          value={value}
+          onChange={onChange}
+          style={{
+            width: "100%", boxSizing: "border-box", border: `1px solid ${T.line}`,
+            borderRadius: 10, padding: "13px 14px", fontSize: 14,
+            background: T.card, fontFamily: FONT,
+          }}
+        />
+        {isPassword && (
+          <span onClick={() => setHidden(!hidden)} style={{ position: "absolute", right: 12, top: 12, cursor: "pointer", color: T.sub }}>
+            <Icon name="eye" size={18} color={T.sub} />
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ErrorField({ label, value, onChange, error }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: T.sub, marginBottom: 6 }}>{label}</div>
+      <input
+        value={value}
+        onChange={onChange}
+        style={{
+          width: "100%", boxSizing: "border-box",
+          border: `1px solid ${error ? T.redBorder : T.line}`,
+          borderRadius: 10, padding: "13px 14px", fontSize: 14,
+          background: error ? T.red : T.card, fontFamily: FONT,
+        }}
+      />
+      {error && <div style={{ color: T.redText, fontSize: 11.5, marginTop: 5 }}>{error}</div>}
+    </div>
+  );
+}
+
+function Sheet({ title, onClose, children, tall }) {
+  return (
+    <div style={{
+      background: T.bg, borderRadius: "22px 22px 0 0", padding: "10px 20px 20px",
+      boxShadow: "0 -12px 30px rgba(0,0,0,0.12)", flex: tall ? 1 : "none",
+      display: "flex", flexDirection: "column", overflow: "auto",
+    }}>
+      <div style={{ width: 40, height: 4, borderRadius: 4, background: T.line, margin: "4px auto 14px" }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{title}</div>
+        {onClose && <span onClick={onClose} style={{ cursor: "pointer" }}><Icon name="close" size={18} color={T.sub} /></span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Modal({ children }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, background: "rgba(20,16,35,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 28 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: "22px 20px", width: "100%", textAlign: "center" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({ screen, go }) {
+  const tabs = [
+    { key: "results", icon: "home" },
+    { key: "scan", icon: "scan" },
+    { key: "profile", icon: "profile" },
+  ];
+  return (
+    <div style={{ display: "flex", borderTop: `1px solid ${T.line}`, background: T.bg, flexShrink: 0 }}>
+      {tabs.map((t) => (
+        <button key={t.key} onClick={() => go(t.key)} style={{ flex: 1, border: "none", background: "none", padding: "12px 0 14px", cursor: "pointer" }}>
+          <Icon name={t.icon} color={screen === t.key ? T.purple : "#C8C3D8"} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- Logo ---------------- */
+function Logo({ size = 30 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{
+        width: size, height: size, borderRadius: "38% 50% 50% 50%",
+        background: `linear-gradient(135deg, ${T.purple}, #5B8DEF)`,
+      }} />
+      <span style={{ fontSize: size * 0.62, fontWeight: 700, background: `linear-gradient(90deg, ${T.purple}, #5B8DEF)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+        glowtive
+      </span>
+    </div>
+  );
+}
+
+/* ================= Screens ================= */
+
+function Welcome({ go }) {
+  return (
+    <Screen>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <Logo size={46} />
+      </div>
+      <div style={{ padding: 24 }}>
+        <GradientButton onClick={() => go("signup")}>Get started</GradientButton>
+        <div style={{ height: 10 }} />
+        <button onClick={() => go("signin")} style={{ width: "100%", background: "none", border: "none", padding: "12px 0", fontSize: 13.5, color: T.sub, cursor: "pointer" }}>
+          I already have an account
+        </button>
+      </div>
+    </Screen>
+  );
+}
+
+function SignIn({ go, onSignIn }) {
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!phone || !password) { setShowPrompt(true); return; }
+    setError("");
+    try {
+      const user = await apiCall("/api/signin", { method: "POST", body: JSON.stringify({ phone, password }) });
+      onSignIn(user);
+      go("category");
+    } catch (e) {
+      if (e.isNetworkError) {
+        // backend not running — fall back so the demo still works
+        onSignIn({ name: "Sarah Ahmed", phone });
+        go("category");
+      } else {
+        setError(e.message);
+      }
+    }
+  };
+
+  return (
+    <Screen>
+      <LavenderHeader title={<>Welcome Back to<br />Glowtive</>} onBack={() => go("welcome")} />
+      <div style={{ flex: 1, position: "relative" }}>
+        <Sheet title="Sign in">
+          <Field label="Phone Number" placeholder="0543786901" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {error && <div style={{ color: T.redText, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+          <div onClick={() => go("forgot")} style={{ textAlign: "right", fontSize: 12, color: T.sub, marginBottom: 18, cursor: "pointer" }}>
+            Forget Password?
+          </div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <GradientButton round onClick={submit}>
+              <Icon name="back" color="#fff" size={18} style={{ transform: "scaleX(-1)" }} />
+            </GradientButton>
+          </div>
+          <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: T.sub }}>
+            Don't Have Account? <span onClick={() => go("signup")} style={{ color: T.purple, fontWeight: 600, cursor: "pointer" }}>Sign up</span>
+          </div>
+        </Sheet>
+        {showPrompt && (
+          <Modal>
+            <div style={{ color: T.redText, fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
+              You don't have an account yet. Please sign up to continue
+            </div>
+            <button onClick={() => { setShowPrompt(false); go("signup"); }} style={{ width: "100%", background: "none", border: "none", padding: "10px 0", fontSize: 14, fontWeight: 700, color: T.ink, cursor: "pointer" }}>
+              Sign Up
+            </button>
+            <button onClick={() => setShowPrompt(false)} style={{ width: "100%", background: "none", border: "none", padding: "8px 0", fontSize: 13, color: T.sub, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </Modal>
+        )}
+      </div>
+    </Screen>
+  );
+}
+
+function SignUp({ go, onCreate }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const canSubmit = name.trim() && phone.trim() && password.trim();
+
+  const submit = async () => {
+    setError("");
+    const user = { name: name.trim(), phone: phone.trim() };
+    try {
+      await apiCall("/api/signup", { method: "POST", body: JSON.stringify({ ...user, password }) });
+      onCreate(user);
+      go("category");
+    } catch (e) {
+      if (e.isNetworkError) {
+        onCreate(user); // backend not running — fall back so the demo still works
+        go("category");
+      } else {
+        setError(e.message);
+      }
+    }
+  };
+
+  return (
+    <Screen>
+      <LavenderHeader title={<>Welcome to<br />Glowtive</>} onBack={() => go("welcome")} />
+      <Sheet title="Sign Up">
+        <Field label="Name" placeholder="Enter your name here" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="Phone Number" placeholder="+966 000 000 00" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {error && <div style={{ color: T.redText, fontSize: 12, marginBottom: 10 }}>{error}</div>}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
+          <GradientButton round disabled={!canSubmit} onClick={submit}>
+            <Icon name="back" color="#fff" size={18} />
+          </GradientButton>
+        </div>
+        <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: T.sub }}>
+          Already Have Account? <span onClick={() => go("signin")} style={{ color: T.purple, fontWeight: 600, cursor: "pointer" }}>Sign in</span>
+        </div>
+      </Sheet>
+    </Screen>
+  );
+}
+
+function Forgot({ go }) {
+  const [phone, setPhone] = useState("");
+  return (
+    <Screen>
+      <LavenderHeader title="Forgot password" onBack={() => go("signin")} />
+      <Sheet title="Enter your phone number">
+        <Field label="Phone Number" placeholder="+966 ___ _______" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <GradientButton onClick={() => go("verify")}>Reset password</GradientButton>
+      </Sheet>
+    </Screen>
+  );
+}
+
+function Verify({ go }) {
+  const [code, setCode] = useState(["0", "7", "1", "0"]);
+  return (
+    <Screen bg={T.lavender}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 20 }}>Entry Your 4 digit code</div>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 26 }}>
+          <span style={{ fontSize: 26 }}>✉️</span>
+        </div>
+        <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
+          {code.map((c, i) => (
+            <div key={i} style={{ width: 42, height: 48, borderRadius: 10, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 600 }}>
+              {c}
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, color: "#5B5570", marginBottom: 26 }}>
+          Did you don't get code? <span style={{ color: T.purple, fontWeight: 600 }}>Resend</span>
+        </div>
+      </div>
+      <div style={{ padding: 24 }}>
+        <GradientButton onClick={() => go("reset")}>Verify</GradientButton>
+      </div>
+    </Screen>
+  );
+}
+
+function Reset({ go }) {
+  const [pw, setPw] = useState("");
+  const [confirm, setConfirm] = useState("");
+  return (
+    <Screen>
+      <LavenderHeader title={<>Reset Your<br />Password</>} height={190} />
+      <div style={{ padding: 22, flex: 1 }}>
+        <Field label="Enter the new password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
+        <ul style={{ fontSize: 11, color: T.sub, paddingLeft: 16, margin: "0 0 16px", lineHeight: 1.8 }}>
+          <li>Must be at least 8 characters long</li>
+          <li>Must contain an uppercase and a lowercase letter (A,z)</li>
+          <li>Must contain at least one number</li>
+          <li>Must contain a special character (!,%,@,#,etc.)</li>
+        </ul>
+        <Field label="Confirm new password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+          <GradientButton round onClick={() => go("signin")}>
+            <Icon name="back" color="#fff" size={18} />
+          </GradientButton>
+        </div>
+        <div style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: T.sub }}>Confirm Password</div>
+      </div>
+    </Screen>
+  );
+}
+
+function ChooseCategory({ go, setCategory }) {
+  const options = [
+    { key: "cosmetics", label: "Cosmetics", emoji: "💄" },
+    { key: "skincare", label: "Skincare", emoji: "🌿" },
+  ];
+  return (
+    <Screen>
+      <div style={{ padding: "26px 22px 0" }}>
+        <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.3 }}>What are you<br />looking for?</div>
+      </div>
+      <div style={{ display: "flex", gap: 14, padding: 22, flex: 1 }}>
+        {options.map((o) => (
+          <button key={o.key} onClick={() => { setCategory(o.key); go("allergy"); }}
+            style={{ flex: 1, height: 130, border: `1px solid ${T.line}`, background: T.card, borderRadius: 16, cursor: "pointer", fontFamily: FONT, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <span style={{ fontSize: 26 }}>{o.emoji}</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{o.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: 22 }}>
+        <GradientButton round={false} onClick={() => { setCategory("skincare"); go("allergy"); }} style={{ borderRadius: 999 }}>
+          continue
+        </GradientButton>
+      </div>
+    </Screen>
+  );
+}
+
+function SetAllergy({ go, allergyList, setAllergyList, user }) {
+  const [hasAllergy, setHasAllergy] = useState(allergyList.length > 0 ? "yes" : null);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+
+  const addIngredient = async () => {
+    const val = draft.trim();
+    if (!val) return;
+    if (!/^[a-zA-Z\s]+$/.test(val)) {
+      setError("Please enter letters only");
+      return;
+    }
+    setError("");
+    const normalized = val.toLowerCase();
+    setAllergyList((prev) => [...new Set([...prev, normalized])]);
+    setDraft("");
+    if (user?.phone) {
+      try {
+        await apiCall(`/api/allergies/${user.phone}`, { method: "POST", body: JSON.stringify({ allergyName: normalized }) });
+      } catch (e) {
+        // backend not running — local state above already has it for the demo
+      }
+    }
+  };
+
+  return (
+    <Screen>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 6px" }}>
+        <button onClick={() => go("category")} style={{ background: "none", border: "none", cursor: "pointer" }}><Icon name="back" /></button>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>allergies</span>
+        <span onClick={() => go("scan")} style={{ fontSize: 13, color: T.sub, cursor: "pointer" }}>Skip</span>
+      </div>
+      <div style={{ padding: "14px 22px", flex: 1, overflow: "auto" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Do you have any allergies?</div>
+        {[["no", "No allergies"], ["yes", "Yes, I have allergies"]].map(([key, label]) => (
+          <label key={key} onClick={() => setHasAllergy(key)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${T.line}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10, cursor: "pointer" }}>
+            <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${hasAllergy === key ? T.purple : T.line}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {hasAllergy === key && <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.purple }} />}
+            </span>
+            <span style={{ fontSize: 13.5 }}>{label}</span>
+          </label>
+        ))}
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Allergy Ingredients</span>
+          <span style={{ fontSize: 11.5, color: T.sub }}>Optional</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 8 }}>Add ingredients you're allergic to for personalized alerts</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <ErrorField label="" value={draft} onChange={(e) => { setDraft(e.target.value); setError(""); }} error={error} />
+          </div>
+          <button onClick={addIngredient} style={{ width: 44, height: 44, borderRadius: 10, border: "none", background: T.ink, color: "#fff", cursor: "pointer", flexShrink: 0 }}>+</button>
+        </div>
+
+        {allergyList.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+            {allergyList.map((a) => (
+              <span key={a} onClick={() => setAllergyList((prev) => prev.filter((x) => x !== a))} style={{ fontSize: 12, padding: "6px 12px", borderRadius: 20, background: T.card, cursor: "pointer" }}>
+                {a} ✕
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ fontSize: 11, color: T.sub, marginTop: 18 }}>Common ingredients people react to:</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+          {ALLERGEN_OPTIONS.map((a) => (
+            <span key={a} onClick={() => setAllergyList((prev) => prev.includes(a) ? prev : [...prev, a])}
+              style={{ fontSize: 12, padding: "6px 12px", borderRadius: 20, cursor: "pointer", background: allergyList.includes(a) ? T.ink : T.card, color: allergyList.includes(a) ? "#fff" : T.ink }}>
+              {a}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding: 22 }}>
+        <GradientButton style={{ borderRadius: 999 }} onClick={() => go("scan")}>continue</GradientButton>
+      </div>
+    </Screen>
+  );
+}
+
+function Scan({ go, setActiveProduct, category }) {
+  const [phase, setPhase] = useState("idle"); // idle | viewfinder | invalidFramed | invalidAlert | analyzing
+
+  const startCapture = () => setPhase("viewfinder");
+
+  const confirmShot = (valid) => {
+    if (!valid) { setPhase("invalidFramed"); return; }
+    setPhase("analyzing");
+    (async () => {
+      try {
+        const product = await apiCall("/api/scan", { method: "POST", body: JSON.stringify({ category, imageValid: true }) });
+        setTimeout(() => { setActiveProduct(product); go("analysis"); }, 1400);
+      } catch (e) {
+        // backend not running — pick locally so the demo still works
+        const pool = PRODUCTS.filter((p) => p.category === category || category === "cosmetics");
+        const product = pool[Math.floor(Math.random() * pool.length)] || PRODUCTS[0];
+        setTimeout(() => { setActiveProduct(product); go("analysis"); }, 1400);
+      }
+    })();
+  };
+
+  if (phase === "viewfinder" || phase === "invalidFramed" || phase === "invalidAlert" || phase === "analyzing") {
+    const invalid = phase === "invalidFramed" || phase === "invalidAlert";
+    return (
+      <Screen bg="#15131c">
+        <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{
+            width: 210, height: 210, borderRadius: 12, overflow: "hidden",
+            border: "2px solid rgba(255,255,255,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: invalid ? "linear-gradient(160deg,#6b5a4a,#3a2f26)" : "linear-gradient(160deg,#e8b7a0,#8a4a34)",
+            filter: phase === "analyzing" ? "brightness(0.5)" : "none",
+          }}>
+            <span style={{ fontSize: 42 }}>{invalid ? "🪑" : "💄"}</span>
+          </div>
+          {phase === "analyzing" && (
+            <div style={{ position: "absolute", background: "#fff", borderRadius: 14, padding: "18px 20px", textAlign: "center", width: 180 }}>
+              <div style={{ fontSize: 20, marginBottom: 8 }}>🔎</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 10 }}>Artificial intelligence reads the components</div>
+              <div style={{ fontSize: 12, color: T.sub, cursor: "pointer" }} onClick={() => setPhase("idle")}>Cancel</div>
+            </div>
+          )}
+          {phase === "invalidAlert" && (
+            <Modal>
+              <div style={{ color: T.redText, fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
+                Unfortunately, a non-product image was uploaded. Please re-upload a product image.
+              </div>
+              <button onClick={() => setPhase("viewfinder")} style={{ width: "100%", background: "none", border: "none", padding: "10px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Upload</button>
+              <button onClick={() => setPhase("idle")} style={{ width: "100%", background: "none", border: "none", padding: "8px 0", fontSize: 13, color: T.sub, cursor: "pointer" }}>Cancel</button>
+            </Modal>
+          )}
+        </div>
+        <div style={{ padding: "0 24px 28px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          {phase === "invalidFramed" ? (
+            <button onClick={() => setPhase("invalidAlert")} style={{ background: "#fff", border: "none", borderRadius: 999, padding: "9px 16px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              Upload From Gallery <Icon name="gallery" size={14} />
+            </button>
+          ) : (
+            <button onClick={() => confirmShot(false)} style={{ background: "#fff", border: "none", borderRadius: 999, padding: "9px 16px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              Upload From Gallery <Icon name="gallery" size={14} />
+            </button>
+          )}
+          <button onClick={() => confirmShot(true)} disabled={phase === "analyzing"} style={{ width: 62, height: 62, borderRadius: "50%", border: "3px solid #fff", background: phase === "analyzing" ? "#999" : "#fff", cursor: "pointer" }} />
+        </div>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <TopBar title="Smart scanning" onBack={() => go("allergy")} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ width: "100%", maxWidth: 240, height: 160, border: `1.5px dashed ${T.line}`, borderRadius: 14, background: T.card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 20 }}>
+          <Icon name="camera" size={26} color={T.sub} />
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Scan Product</div>
+          <div style={{ fontSize: 11, color: T.sub }}>Take a photo or upload from gallery</div>
+        </div>
+        <div style={{ display: "flex", gap: 10, width: "100%", maxWidth: 240 }}>
+          <button onClick={startCapture} style={{ flex: 1, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+            <Icon name="camera" size={16} /> Camera
+          </button>
+          <button onClick={startCapture} style={{ flex: 1, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+            <Icon name="gallery" size={16} /> Gallery
+          </button>
+        </div>
+      </div>
+      <div style={{ padding: 22 }}>
+        <GradientButton style={{ borderRadius: 999 }} onClick={startCapture}>continue</GradientButton>
+      </div>
+    </Screen>
+  );
+}
+
+function Analysis({ go, product, allergyList }) {
+  if (!product) return null;
+  const result = AIEngine.checkProductSafety(product, allergyList);
+  const ingredients = AIEngine.analyzeIngredients(product);
+  return (
+    <Screen>
+      <TopBar title="Product analysis" onBack={() => go("scan")} />
+      <div style={{ padding: 22, flex: 1, overflow: "auto" }}>
+        <div style={{ fontSize: 44, textAlign: "center" }}>🧴</div>
+        <div style={{ textAlign: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>{product.name}</div>
+          <div style={{ fontSize: 12, color: T.sub }}>{product.brand}</div>
+        </div>
+        <div style={{
+          padding: 14, borderRadius: 12, marginBottom: 18,
+          background: result.safe ? T.green : T.red,
+          border: `1px solid ${result.safe ? T.greenBorder : T.redBorder}`,
+        }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: result.safe ? T.greenText : T.redText }}>
+            {result.safe ? "Safe for you" : `Contains ${result.flagged}`}
+          </div>
+          <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>
+            {result.safe ? "No known allergens detected" : "This ingredient is on your allergy list."}
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: T.sub, marginBottom: 8 }}>Ingredients read from image</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 22 }}>
+          {ingredients.map((ing) => (
+            <span key={ing} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 20, background: allergyList.includes(ing) ? T.redText : T.card, color: allergyList.includes(ing) ? "#fff" : T.ink }}>
+              {ing}
+            </span>
+          ))}
+        </div>
+        <GradientButton style={{ borderRadius: 999 }} onClick={() => go("results")}>See alternatives</GradientButton>
+      </div>
+    </Screen>
+  );
+}
+
+function Results({ go, product, allergyList, setActiveProduct, category }) {
+  const [tab, setTab] = useState(category === "cosmetics" ? "cosmetics" : "skincare");
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterType, setFilterType] = useState("all");
+
+  const base = product || PRODUCTS[0];
+  const alts = useMemo(() => {
+    let list = AIEngine.getSuitableAlternatives(base, allergyList, filterType);
+    if (filterType === "cheapest") list = [...list].sort((a, b) => a.price - b.price);
+    return list;
+  }, [base, allergyList, filterType]);
+
+  return (
+    <Screen>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 10px" }}>
+        <button onClick={() => go(product ? "analysis" : "scan")} style={{ background: "none", border: "none", cursor: "pointer" }}><Icon name="back" /></button>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Search results</span>
+        <span style={{ width: 20 }} />
+      </div>
+      <div style={{ padding: "0 20px 8px", display: "flex", gap: 8, alignItems: "center" }}>
+        <button onClick={() => setShowFilter(true)} style={{ display: "flex", alignItems: "center", gap: 4, border: `1px solid ${T.line}`, borderRadius: 20, padding: "6px 12px", background: "#fff", fontSize: 12, cursor: "pointer", position: "relative" }}>
+          <Icon name="filter" size={14} /> Filter
+          {filterType !== "all" && <span style={{ position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%", background: T.redText, color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>1</span>}
+        </button>
+        {["skincare", "cosmetics"].map((c) => (
+          <button key={c} onClick={() => setTab(c)} style={{
+            borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer", border: "none",
+            background: tab === c ? T.ink : T.card, color: tab === c ? "#fff" : T.ink,
+          }}>
+            {c === "skincare" ? "Skincare" : "Cosmetics"}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: "6px 20px 4px", fontSize: 12, color: T.sub }}>{alts.length} results found</div>
+      <div style={{ padding: "0 20px 20px", flex: 1, overflow: "auto" }}>
+        {alts.length === 0 && <div style={{ fontSize: 13, color: T.sub, marginTop: 30, textAlign: "center" }}>No safe alternatives found yet.</div>}
+        {alts.map((p) => (
+          <div key={p.id} onClick={() => { setActiveProduct(p); go("details"); }} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: `1px solid ${T.line}`, cursor: "pointer" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: T.card, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🧴</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+              <div style={{ fontSize: 11, color: T.sub }}>{p.brand} · SAR {p.price}{p.organic ? " · Organic" : ""}</div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4, fontSize: 10.5, color: T.greenText }}>
+                <Icon name="check" size={12} /> Safe for you
+              </div>
+            </div>
+          </div>
+        ))}
+        {alts.length > 0 && (
+          <button style={{ width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 10, border: `1px solid ${T.line}`, background: "#fff", fontSize: 12.5, cursor: "pointer" }}>
+            Load More Results
+          </button>
+        )}
+      </div>
+      {showFilter && (
+        <div style={{ position: "absolute", inset: 0, background: "rgba(20,16,35,0.4)", display: "flex", alignItems: "flex-end" }}>
+          <Sheet title="Filter Results" onClose={() => setShowFilter(false)}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {["skincare", "cosmetics"].map((c) => (
+                <button key={c} onClick={() => setTab(c)} style={{ borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer", border: "none", background: tab === c ? T.ink : T.card, color: tab === c ? "#fff" : T.ink }}>
+                  {c === "skincare" ? "Skincare" : "Cosmetics"}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Type</div>
+            {[["cheapest", "Cheapest"], ["organic", "Organic"]].map(([key, label]) => (
+              <label key={key} onClick={() => setFilterType(filterType === key ? "all" : key)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
+                <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${filterType === key ? T.purple : T.line}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {filterType === key && <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.purple }} />}
+                </span>
+                <span style={{ fontSize: 13 }}>{label}</span>
+              </label>
+            ))}
+            <div style={{ marginTop: 16 }}>
+              <GradientButton style={{ borderRadius: 999 }} onClick={() => setShowFilter(false)}>Apply Filters</GradientButton>
+            </div>
+          </Sheet>
+        </div>
+      )}
+      <BottomNav screen="results" go={go} />
+    </Screen>
+  );
+}
+
+function Details({ go, product, allergyList }) {
+  if (!product) return null;
+  const result = AIEngine.checkProductSafety(product, allergyList);
+  return (
+    <Screen>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px" }}>
+        <button onClick={() => go("results")} style={{ background: "none", border: "none", cursor: "pointer" }}><Icon name="back" /></button>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Search results</span>
+        <span style={{ width: 20 }} />
+      </div>
+      <div style={{ padding: "10px 20px", flex: 1, overflow: "auto" }}>
+        <div style={{ height: 150, borderRadius: 16, background: `linear-gradient(160deg, ${T.lavender}, #F3EEFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46, marginBottom: 18 }}>
+          🧴
+        </div>
+        <div style={{ fontSize: 12, color: T.sub }}>{product.brand}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{product.name}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>SAR {product.price}</div>
+
+        {!result.safe ? (
+          <div style={{ display: "flex", gap: 10, background: T.warnBg, border: `1px solid ${T.warnBorder}`, borderRadius: 12, padding: 12, marginBottom: 18 }}>
+            <Icon name="warning" size={18} />
+            <div style={{ fontSize: 12, color: T.warnText, lineHeight: 1.5 }}>
+              Warning: This product contains {result.flagged}, which may cause irritation for sensitive users.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", background: T.green, border: `1px solid ${T.greenBorder}`, borderRadius: 12, padding: 12, marginBottom: 18 }}>
+            <Icon name="check" size={16} />
+            <div style={{ fontSize: 12, color: T.greenText, fontWeight: 600 }}>Safe for you — no known allergens detected.</div>
+          </div>
+        )}
+
+        <div style={{ fontSize: 12, color: T.sub, marginBottom: 8 }}>Full ingredient list</div>
+        <ul style={{ paddingLeft: 18, fontSize: 12.5, lineHeight: 1.9, margin: 0 }}>
+          {product.ingredients.map((ing) => <li key={ing}>{ing}</li>)}
+        </ul>
+      </div>
+      <BottomNav screen="results" go={go} />
+    </Screen>
+  );
+}
+
+function Profile({ go, user, onSignOut }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <Screen>
+      <LavenderHeader title="Profile" height={150} />
+      <div style={{ flex: 1, position: "relative" }}>
+        <Sheet title={editing ? "Edit Profile" : "Profile"} onClose={editing ? () => setEditing(false) : undefined}>
+          {!editing ? (
+            <>
+              <div style={{ border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{user?.name || "Guest"}</div>
+                <div style={{ fontSize: 12, color: T.sub }}>{user?.phone || "Not signed in"}</div>
+              </div>
+              <button onClick={() => setEditing(true)} style={{ width: "100%", textAlign: "left", background: "none", border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, fontSize: 13, marginBottom: 10, cursor: "pointer" }}>
+                Edit profile
+              </button>
+              <button onClick={onSignOut} style={{ width: "100%", border: `1px solid ${T.line}`, borderRadius: 12, padding: "12px 0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <Icon name="signout" size={16} /> sign out
+              </button>
+            </>
+          ) : (
+            <>
+              {["Name", "Phone Number", "Password"].map((label) => (
+                <div key={label} style={{ border: `1px solid ${T.line}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 13.5 }}>
+                    {label === "Name" ? (user?.name || "—") : label === "Phone Number" ? (user?.phone || "—") : "••••••••••"}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </Sheet>
+      </div>
+      <BottomNav screen="profile" go={go} />
+    </Screen>
+  );
+}
+
+/* ================= App shell ================= */
+
+function App() {
+  const [screen, setScreen] = useState("welcome");
+  const [category, setCategory] = useState("skincare");
+  const [allergyList, setAllergyList] = useState(["fragrance"]);
+  const [activeProduct, setActiveProduct] = useState(null);
+  const [user, setUser] = useState(null);
+
+  const handleCreate = async (u) => {
+    setUser(u);
+    try {
+      const allergies = await apiCall(`/api/allergies/${u.phone}`);
+      if (Array.isArray(allergies) && allergies.length) setAllergyList(allergies);
+    } catch (e) {
+      // backend not running — local demo state stays as-is
+    }
+  };
+
+  const handleSignOut = () => {
+    setUser(null);
+    setScreen("welcome");
+  };
+
+  const screens = {
+    welcome: <Welcome go={setScreen} />,
+    signin: <SignIn go={setScreen} onSignIn={handleCreate} />,
+    signup: <SignUp go={setScreen} onCreate={handleCreate} />,
+    forgot: <Forgot go={setScreen} />,
+    verify: <Verify go={setScreen} />,
+    reset: <Reset go={setScreen} />,
+    category: <ChooseCategory go={setScreen} setCategory={setCategory} />,
+    allergy: <SetAllergy go={setScreen} allergyList={allergyList} setAllergyList={setAllergyList} user={user} />,
+    scan: <Scan go={setScreen} setActiveProduct={setActiveProduct} category={category} />,
+    analysis: <Analysis go={setScreen} product={activeProduct} allergyList={allergyList} />,
+    results: <Results go={setScreen} product={activeProduct} allergyList={allergyList} setActiveProduct={setActiveProduct} category={category} />,
+    details: <Details go={setScreen} product={activeProduct} allergyList={allergyList} />,
+    profile: <Profile go={setScreen} user={user} onSignOut={handleSignOut} />,
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#EDEAF6", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT }}>
+      <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      <div style={{ width: 360, height: 740, background: "#fff", borderRadius: 36, border: "10px solid #16131f", overflow: "hidden", position: "relative", boxShadow: "0 30px 60px rgba(0,0,0,0.3)" }}>
+        {screens[screen]}
+      </div>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
